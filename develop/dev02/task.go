@@ -24,7 +24,7 @@ import (
 	"unicode"
 )
 
-func unpackString(s string) (string, error) {
+func UnpackString(s string) (string, error) {
 
 	var result []rune
 	var count int
@@ -56,7 +56,7 @@ func unpackString(s string) (string, error) {
 }
 
 func main() {
-	result, err := unpackString("f4h3g0t17")
+	result, err := UnpackString("f4h3g5t3")
 	if err != nil {
 		fmt.Println(err)
 	} else {

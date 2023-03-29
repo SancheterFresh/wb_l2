@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -34,10 +35,10 @@ import (
 */
 
 type Event struct {
-	id   int
-	user int
-	text string
-	date time.Time
+	Id   int       `json:"Id"`
+	User int       `json:"User"`
+	Text string    `json:"Text"`
+	Date time.Time `json:"Date"`
 }
 
 type Storage struct {
@@ -45,18 +46,18 @@ type Storage struct {
 	events map[int][]Event
 }
 
-func (s *Storage) Create(ev *Event) error {
+func (s *Storage) Create(e *Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if events, ok := s.events[ev.user]; ok {
+	if events, ok := s.events[e.User]; ok {
 		for _, event := range events {
-			if event.id == ev.id {
+			if event.Id == e.Id {
 				return fmt.Errorf("событие с таким id уже существует для данного пользователя")
 			}
 		}
 	}
-	s.events[ev.user] = append(s.events[ev.user], *ev)
+	s.events[e.User] = append(s.events[e.User], *e)
 
 	return nil
 }
@@ -70,13 +71,13 @@ func (s *Storage) Update(e *Event) error {
 	var events []Event
 	ok := false
 
-	if events, ok = s.events[e.user]; !ok {
+	if events, ok = s.events[e.User]; !ok {
 		return fmt.Errorf("пользователь не найден")
 	}
 
 	for i, event := range events {
-		if event.id == e.id {
-			s.events[e.user][i] = *e
+		if event.Id == e.Id {
+			s.events[e.User][i] = *e
 			found = true
 			break
 		}
@@ -97,16 +98,16 @@ func (s *Storage) Delete(e *Event) error {
 	var events []Event
 	ok := false
 
-	if events, ok = s.events[e.user]; !ok {
+	if events, ok = s.events[e.User]; !ok {
 		return fmt.Errorf("пользователь не найден")
 	}
 
 	for i, event := range events {
-		if event.id == e.id {
+		if event.Id == e.Id {
 			found = true
-			l := len(s.events[e.user])
-			s.events[e.user][i] = s.events[e.user][l-1]
-			s.events[e.user] = s.events[e.user][:l-1]
+			l := len(s.events[e.User])
+			s.events[e.User][i] = s.events[e.User][l-1]
+			s.events[e.User] = s.events[e.User][:l-1]
 			break
 		}
 	}
@@ -131,7 +132,8 @@ func (s *Storage) getEventsForDay(user int, date time.Time) ([]Event, error) {
 	}
 
 	for _, e := range events {
-		if e.date.Year() == date.Year() && e.date.Month() == date.Month() && e.date.Day() == date.Day() {
+
+		if e.Date.Year() == date.Year() && e.Date.Month() == date.Month() && e.Date.Day() == date.Day() {
 			res = append(res, e)
 		}
 	}
@@ -153,7 +155,7 @@ func (s *Storage) getEventsForWeek(user int, date time.Time) ([]Event, error) {
 	}
 
 	for _, e := range events {
-		wyear, week := e.date.ISOWeek()
+		wyear, week := e.Date.ISOWeek()
 		swyear, sweek := date.ISOWeek()
 		if wyear == swyear && week == sweek {
 			res = append(res, e)
@@ -177,7 +179,7 @@ func (s *Storage) getEventsForMonth(user int, date time.Time) ([]Event, error) {
 	}
 
 	for _, e := range events {
-		if e.date.Year() == date.Year() && e.date.Month() == date.Month() {
+		if e.Date.Year() == date.Year() && e.Date.Month() == date.Month() {
 			res = append(res, e)
 		}
 	}
@@ -229,53 +231,27 @@ func getErrResponse(w http.ResponseWriter, e string, status int) {
 	w.Write(marshaled)
 }
 
-func getPostData(w http.ResponseWriter, r *http.Request) (int, int, time.Time, string, error) {
-	var id int
-	var user int
-	var date time.Time
-	var text string
+func getPostData(w http.ResponseWriter, r *http.Request) (Event, error) {
 
-	// сначала проверяем вернула ли форма хоть что-то, а далее пробуем привести в нужный фoрмат
-	idString := r.FormValue("id")
-	if idString != "" {
-		idInt, err := strconv.Atoi(idString)
-		if err != nil {
-			return 0, 0, time.Time{}, "", errors.New("400: bad int")
-		}
+	w.Header().Set("Content-Type", "application/json")
 
-		id = idInt
+	var newEvent Event
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		getErrResponse(w, " error with reading json", http.StatusNotAcceptable)
+		return newEvent, errors.New("400: bad int")
 	}
 
-	userString := r.FormValue("user")
-	if userString != "" {
-		userInt, err := strconv.Atoi(userString)
-		if err != nil {
-			return 0, 0, time.Time{}, "", errors.New("400: bad int")
-		}
+	json.Unmarshal(reqBody, &newEvent)
 
-		id = userInt
-	}
-
-	dateString := r.FormValue("date")
-	if dateString != "" {
-		dateString += "T00:00:00Z"
-		dateTime, err := time.Parse(time.RFC3339, dateString)
-		if err != nil {
-			return 0, 0, time.Time{}, "", errors.New("400: bad date")
-		}
-
-		date = dateTime
-	}
-
-	text = r.FormValue("text")
-
-	return id, user, date, text, nil
+	return newEvent, nil
 }
 
 func (d *dataStore) createEvent(w http.ResponseWriter, r *http.Request) {
 	var e Event
 	var err error
-	e.id, e.user, e.date, e.text, err = getPostData(w, r)
+	e, err = getPostData(w, r)
+
 	if err != nil {
 		getErrResponse(w, err.Error(), http.StatusBadRequest)
 		return
@@ -285,7 +261,6 @@ func (d *dataStore) createEvent(w http.ResponseWriter, r *http.Request) {
 		getErrResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
 	getResponse(w, "Событие добавлено", []Event{e}, http.StatusCreated)
 
 }
@@ -293,7 +268,7 @@ func (d *dataStore) createEvent(w http.ResponseWriter, r *http.Request) {
 func (d *dataStore) updateEvent(w http.ResponseWriter, r *http.Request) {
 	var e Event
 	var err error
-	e.id, e.user, e.date, e.text, err = getPostData(w, r)
+	e, err = getPostData(w, r)
 	if err != nil {
 		getErrResponse(w, err.Error(), http.StatusBadRequest)
 		return
@@ -311,7 +286,7 @@ func (d *dataStore) updateEvent(w http.ResponseWriter, r *http.Request) {
 func (d *dataStore) deleteEvent(w http.ResponseWriter, r *http.Request) {
 	var e Event
 	var err error
-	e.id, e.user, e.date, e.text, err = getPostData(w, r)
+	e, err = getPostData(w, r)
 	if err != nil {
 		getErrResponse(w, err.Error(), http.StatusBadRequest)
 		return
@@ -338,7 +313,6 @@ func (d *dataStore) eventsForDay(w http.ResponseWriter, r *http.Request) {
 		getErrResponse(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
 	if ev, err = d.data.getEventsForDay(user, date); err != nil {
 		getErrResponse(w, err.Error(), http.StatusBadRequest)
 		return

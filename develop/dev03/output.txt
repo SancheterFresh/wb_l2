@@ -1,8 +1,10 @@
-zero value boolean
+1 2 5
+1 2 5
+11 5 67
+2 6 7
 force update blink
 more than string
-same feature thing
 nice clever bird
-2 6 7
-11 5 67
-1 2 5
+same feature thing
+same feature thing
+zero value boolean

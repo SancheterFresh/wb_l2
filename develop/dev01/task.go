@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/beevik/ntp"
 )
@@ -19,17 +20,16 @@ import (
 Программа должна проходить проверки go vet и golint.
 */
 
-
-func PrintTime() {
-	time, err := ntp.Time("pool.ntp.org")
+func PrintTime() time.Time {
+	time, err := ntp.Time("0.beevik-ntp.pool.ntp.org")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v", err)
-	} else {
-		fmt.Println(time)
 	}
+	return time
 
 }
 
 func main() {
-	PrintTime()
+	t := PrintTime()
+	fmt.Println(t)
 }
